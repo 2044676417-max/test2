@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小测试</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: #1a1a1a; color: #e0e0e0;
+      font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+      display: flex; justify-content: center; align-items: center;
+      min-height:100vh; padding:1em;
+    }
+    #app {
+      max-width:600px; width:100%;
+      background: #222; border-radius:12px;
+      padding:2em; box-shadow:0 0 20px rgba(0,0,0,0.5);
+      line-height:1.7; transition: opacity 0.4s ease;
+    }
+    .fade-out { opacity:0; }
+    .story-text, .branch-text { margin-bottom:1.5em; white-space:pre-wrap; }
+    .choices { display:flex; flex-wrap:wrap; gap:0.5em; margin:1.5em 0 0.5em; }
+    .choice-btn, .quiz-btn, .nav-btn, .branch-btn {
+      background:#3a3a3a; border:none; color:#ddd;
+      padding:0.6em 1.2em; border-radius:6px; cursor:pointer;
+      font-size:1em; transition:background 0.2s;
+      margin-right:0.5em; margin-bottom:0.5em;
+    }
+    .choice-btn:hover, .quiz-btn:hover, .nav-btn:hover, .branch-btn:hover { background:#555; }
+    .quiz-btn.selected { background:#4c8c4a; color:white; }
+    .nav-area { display:flex; justify-content:space-between; align-items:center; margin-top:1.5em; }
+    .progress { color:#aaa; font-size:0.9em; }
+    .disabled-btn { opacity:0.5; pointer-events:none; }
+    .note-box {
+      background: #f4efd7; color: #2e241f;
+      padding: 1.5em; border-radius: 8px;
+      margin: 1.5em 0; font-family: 'Courier New', monospace;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      word-break: break-all;
+    }
+    .note-title {
+      text-align: center; font-weight: bold;
+      border-bottom: 1px dashed #8b7d6b;
+      padding-bottom: 0.5em; margin-bottom: 1em;
+      font-size: 1.1em;
+    }
+    .cipher-text { font-size:0.85em; line-height:1.5; }
+    #branch-panel { display:none; }
+    #result-message { display:none; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="story-container">
+    <div id="story-text" class="story-text"></div>
+    <div id="story-choices" class="choices"></div>
+  </div>
+
+  <div id="quiz-section" style="display:none;">
+    <div id="quiz-main">
+      <h2>测试卷</h2>
+      <div id="single-question">
+        <p id="question-text"></p>
+        <div class="choices" id="question-choices"></div>
+      </div>
+      <div class="choices" id="extra-branch-btns" style="margin-bottom:1em;">
+        <button id="btn-outside" class="branch-btn">看看窗外</button>
+        <button id="btn-dreli" class="branch-btn">看看Dreli</button>
+        <button id="btn-paper" class="branch-btn" style="display:none;">看看测试纸</button>
+      </div>
+      <div class="nav-area">
+        <button id="prev-btn" class="nav-btn" disabled>← 上一题</button>
+        <span class="progress" id="progress-text"></span>
+        <button id="next-btn" class="nav-btn">下一题 →</button>
+      </div>
+      <button id="submit-test" class="choice-btn disabled-btn" disabled>提交测试</button>
+    </div>
+
+    <div id="branch-panel">
+      <div id="branch-text" class="branch-text"></div>
+      <div id="branch-choices" class="choices"></div>
+      <button id="back-to-quiz-btn" class="choice-btn" style="display:none;">继续答题</button>
+    </div>
+
+    <div id="result-message"></div>
+    <button id="reset-btn" class="choice-btn" style="display:none;">再来一次</button>
+  </div>
+</div>
+
+<script>
+  // ================== 叙事数据 ==================
+  const passages = {
+    1: {
+      text: "今天天气很好，窗外蔚蓝一片，万里无云。\nDreli把你单独请进了房间，一个并不算狭窄，白净的房间。\n房间中心摆着一套桌椅，桌子上放着一张薄纸和一支笔。",
+      choices: [
+        { text: "“心理测评就用这种东西？”", next: 2 },
+        { text: "走过去看看题", next: 3 }
+      ]
+    },
+    2: {
+      text: "“心理测评就用这种东西？”你质疑道。\nDreli没有反驳，她微笑着点点头。\n这个房间只有你和她，她既然不出声，你也没什么好说的了。",
+      choices: [ { text: "走过去看看题", next: 3 } ]
+    },
+    3: {
+      text: "你走过去，Dreli帮你把椅子拉开。\n…呃，她什么时候这么贴心了呢？\n你顺便坐下，拿起纸开始看题。",
+      choices: [ { text: "观察题目", next: 4 } ]
+    },
+    4: {
+      text: "你大致扫了一眼，上面都是一些无意义的题目…\n这种东西真的是心理测评吗？\n你有点不满。",
+      choices: [
+        { text: "“这究竟是什么东西？”", next: 5 },
+        { text: "开始答题", next: "quiz" }
+      ]
+    },
+    5: {
+      text: "“这究竟是什么东西？”你转头看向Dreli。\n她就站在你身边，轻扶眼镜框。\n“您是什么意思呢？”\n她的表情完全不像是困惑，反而一直挂着那个无意义的微笑。",
+      choices: [
+        { text: "“这些题目根本不像是专业的心理测评。”", next: 7 },
+        { text: "“…没事，当我没说吧。”", next: 12 }
+      ]
+    },
+    7: {
+      text: "“这些题目根本不像是专业的心理测评。”你继续质疑。\n她的笑容还是不变，“难道我看起来就很专业了？”\n你一时间无话可说。",
+      choices: [ { text: "“我不做了。”", next: 8 } ]
+    },
+    8: {
+      text: "“我不做了。”你说。\nDreli点点头，把你的测评纸收了起来。\n她邀请你离开房间。",
+      choices: [
+        { text: "“不挽留一下我？”", next: 9 },
+        { text: "离开", next: 10 },
+        { text: "“我开玩笑的。”", next: 11 }
+      ]
+    },
+    9: {
+      text: "“不挽留一下我吗？”\n“如果您真想走的话，我也拦不住。”她歪了歪头，眼镜链耷拉到肩膀上，“你还不走吗？”",
+      choices: [
+        { text: "离开", next: 10 },
+        { text: "“我开玩笑的。”", next: 11 }
+      ]
+    },
+    10: {
+      text: "你起身离开了这个怪异的房间…噢，Dreli真的没有阻拦你，她看着你离去了。\n\n…如果你没有离开会怎么样？你在想象…",
+      choices: [ { text: "再来一次", next: 1, reset: true } ]
+    },
+    11: {
+      text: "“我开玩笑的。”你解释道。\n“好吧？”Dreli又把纸笔放回桌上，“虽然我有很多闲余时间，但请您下次不要这么逗我了。”",
+      choices: [ { text: "开始答题", next: "quiz" } ]
+    },
+    12: {
+      text: "Dreli点了点头，示意你继续答题。",
+      choices: [ { text: "开始答题", next: "quiz" } ]
+    },
+    // 答题中分支
+    13: {
+      text: "你看向了窗外，晴空万里，和煦的阳光攀至你的桌上，连带着你的手上也有一小块，太阳赐予的光斑。\n你好像看到了什么…背面好像还有什么打印好的内容。",
+      choices: [ { text: "继续", next: -4 } ]
+    },
+    14: {
+      text: "…她没有关注你，站在窗旁，大概是在看向窗外发呆，她金丝眼镜的反光挡住了她的双眼，你不知道她看向了哪。",
+      choices: [
+        { text: "呼唤Dreli", next: 15 },
+        { text: "继续答题", next: "back" }
+      ]
+    },
+    15: {
+      text: "你打算说什么？",
+      // 动态生成
+    },
+    16: {
+      text: "你说，“今天天气真好啊。”她没理你，好像沉浸在自己世界里。",
+      choices: [
+        { text: "理理我啊！", next: 18 },
+        { text: "继续答题", next: "back" }
+      ]
+    },
+    17: {
+      text: "你突然站起身，大喊道“我不会做题！我不会做题！”\n…Dreli看向你，她的眼神明显说明了，她完全不理解你现在在做什么，但她还是走到你旁边，温和解释道。\n“你拿起笔，在上面勾选是或否就可以了，写完了交给我就可以。”",
+      choices: [
+        { text: "呜呜呜我是弱智我不会写。", next: 19 },
+        { text: "开始答题", next: "back" }
+      ]
+    },
+    18: {
+      text: "你又补了一句，说：“理理我啊！”\n她这才慢慢转向头看向你，眼神困惑，“理理你。”\n…",
+      choices: [ { text: "开始答题", next: "back" } ]
+    },
+    19: {
+      text: "“呜呜呜我是弱智我不会写”你开始撒泼了，尽管你不知道为什么。\nDreli看了看你，又看了看题，选择出门而去…哦不，看起来你不能再骚扰她了。",
+      choices: [ { text: "开始答题", next: "back" } ]
+    },
+    20: {
+      text: "你拿起答题纸，发现背面印着一行黑体的小字…'lamb'，这是什么意思呢？你不明白。",
+      choices: [ { text: "继续答题", next: "back" } ]   // 改为直接返回
+    },
+    21: {
+      text: "你把Dreli叫来，指了指纸张背面的“lamb”。\n她盯着那行字，过一会才给你答复，“我买这些纸作为测评卷的时候，它就已经有了。”",
+      choices: [ { text: "开始答题", next: "back" } ]
+    }
+  };
+
+  // 题目
+  const questions = [
+    "你是第一次来海岛？",
+    "你确信你的记忆是可靠的，且你信任你的记忆？",
+    "你从未见到过超自然力量及不可思议的事情？",
+    "如果能让自己重要之物再次出现，你不会在意那是真是假？",
+    "你不会叫醒一个睡着的人？",
+    "你会叫醒一个装睡的人？",
+    "你认为这个测试愚蠢至极？"
+  ];
+
+  const descMap = [
+    { yes: "has not realized that they have been deceived by countless reincarnations",
+      no: "has already realized that they have been deceived by countless reincarnations" },
+    { yes: "has not yet begun to doubt the dreamland we provide",
+      no: "has already begun to doubt the dreamland we provide" },
+    { yes: "still has not seen our great Lord",
+      no: "seems to have possibly seen our great Lord" },
+    { yes: "is suitable to be our companion",
+      no: "is not suitable to be our companion" },
+    { yes: "may not need to be driven out of the island",
+      no: "may need to be driven out of the island" },
+    { yes: "probably needs to be driven out of the island",
+      no: "probably does not need to be driven out of the island" },
+    { yes: "thinks this test is utterly stupid",
+      no: "does not think this test is utterly stupid" }
+  ];
+
+  // 隐藏密钥
+  const _K = String.fromCharCode(108, 97, 109, 98);
+
+  // 状态
+  let currentPassage = 1;
+  let seenOutside = false;
+  let seenPaper = false;
+  let dreliGone = false;   // 用于“弱智”路线后移除Dreli按钮
+  let answers = new Array(questions.length).fill(null);
+  let currentQuestionIndex = 0;
+
+  // DOM
+  const app = document.getElementById('app');
+  const storyContainer = document.getElementById('story-container');
+  const storyText = document.getElementById('story-text');
+  const storyChoices = document.getElementById('story-choices');
+  const quizSection = document.getElementById('quiz-section');
+  const quizMain = document.getElementById('quiz-main');
+  const questionText = document.getElementById('question-text');
+  const questionChoices = document.getElementById('question-choices');
+  const prevBtn = document.getElementById('prev-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const progressText = document.getElementById('progress-text');
+  const submitBtn = document.getElementById('submit-test');
+  const resultMessage = document.getElementById('result-message');
+  const resetBtn = document.getElementById('reset-btn');
+  const branchPanel = document.getElementById('branch-panel');
+  const branchText = document.getElementById('branch-text');
+  const branchChoices = document.getElementById('branch-choices');
+  const backToQuizBtn = document.getElementById('back-to-quiz-btn');
+  const btnOutside = document.getElementById('btn-outside');
+  const btnDreli = document.getElementById('btn-dreli');
+  const btnPaper = document.getElementById('btn-paper');
+
+  function fadeTransition(callback) {
+    app.classList.add('fade-out');
+    setTimeout(() => {
+      callback();
+      app.classList.remove('fade-out');
+    }, 200);
+  }
+
+  function addButton(parent, text, className, handler) {
+    const btn = document.createElement('button');
+    btn.className = className;
+    btn.innerText = text;
+    btn.onclick = handler;
+    parent.appendChild(btn);
+  }
+
+  // ================== 剧情开头 ==================
+  function renderPassage(id) {
+    fadeTransition(() => {
+      quizSection.style.display = 'none';
+      storyContainer.style.display = 'block';
+      resultMessage.style.display = 'none';
+      resetBtn.style.display = 'none';
+      if (id === 10) {
+        storyText.innerText = passages[10].text;
+        storyChoices.innerHTML = '';
+        addButton(storyChoices, '再来一次', 'choice-btn', resetGame);
+        return;
+      }
+      if (!passages[id]) return;
+      const p = passages[id];
+      storyText.innerText = p.text;
+      storyChoices.innerHTML = '';
+      if (p.choices) {
+        p.choices.forEach(choice => {
+          addButton(storyChoices, choice.text, 'choice-btn', () => {
+            if (choice.next === "quiz") {
+              startActualQuiz();
+            } else if (choice.reset) {
+              resetGame();
+            } else {
+              currentPassage = choice.next;
+              renderPassage(currentPassage);
+            }
+          });
+        });
+      }
+    });
+  }
+
+  // ================== 正式答题 ==================
+  function startActualQuiz() {
+    fadeTransition(() => {
+      storyContainer.style.display = 'none';
+      quizSection.style.display = 'block';
+      quizMain.style.display = 'block';
+      branchPanel.style.display = 'none';
+      resultMessage.style.display = 'none';
+      resetBtn.style.display = 'none';
+      answers.fill(null);
+      currentQuestionIndex = 0;
+      renderQuestionAndBranches();
+    });
+  }
+
+  function renderQuestionAndBranches() {
+    const q = questions[currentQuestionIndex];
+    questionText.innerHTML = `<strong>第 ${currentQuestionIndex+1} 题 / 共 ${questions.length} 题</strong><br><br>${q}`;
+    questionChoices.innerHTML = '';
+    const ans = answers[currentQuestionIndex];
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'quiz-btn';
+    yesBtn.innerText = '是';
+    if (ans === 'yes') yesBtn.classList.add('selected');
+    yesBtn.onclick = () => setAnswer('yes');
+    const noBtn = document.createElement('button');
+    noBtn.className = 'quiz-btn';
+    noBtn.innerText = '否';
+    if (ans === 'no') noBtn.classList.add('selected');
+    noBtn.onclick = () => setAnswer('no');
+    questionChoices.appendChild(yesBtn);
+    questionChoices.appendChild(noBtn);
+
+    // 分支按钮显示控制
+    btnOutside.style.display = 'inline-block';
+    btnDreli.style.display = dreliGone ? 'none' : 'inline-block';   // 能不能不要看代码啊！！！怪不好意思的…
+    btnPaper.style.display = seenOutside ? 'inline-block' : 'none';
+
+    updateNavigation();
+    updateSubmitState();
+  }
+
+  function setAnswer(value) {
+    answers[currentQuestionIndex] = value;
+    renderQuestionAndBranches();
+  }
+
+  function updateNavigation() {
+    prevBtn.disabled = currentQuestionIndex === 0;
+    if (currentQuestionIndex === questions.length - 1) {
+      nextBtn.style.display = 'none';
+    } else {
+      nextBtn.style.display = 'inline-block';
+    }
+    progressText.textContent = `${currentQuestionIndex+1} / ${questions.length}`;
+  }
+
+  function goToQuestion(index) {
+    if (index < 0 || index >= questions.length) return;
+    currentQuestionIndex = index;
+    renderQuestionAndBranches();
+  }
+
+  prevBtn.addEventListener('click', () => goToQuestion(currentQuestionIndex - 1));
+  nextBtn.addEventListener('click', () => goToQuestion(currentQuestionIndex + 1));
+
+  function updateSubmitState() {
+    const allAnswered = !answers.includes(null);
+    if (allAnswered) {
+      submitBtn.classList.remove('disabled-btn');
+      submitBtn.disabled = false;
+    } else {
+      submitBtn.classList.add('disabled-btn');
+      submitBtn.disabled = true;
+    }
+  }
+
+  // ================== 分支叙事 ==================
+  function openBranch(startId, source) {
+    quizMain.style.display = 'none';
+    branchPanel.style.display = 'block';
+    backToQuizBtn.style.display = 'none';
+    // 点“看看测试纸”直接标记 seenPaper
+    if (startId === 20) {
+      seenPaper = true;
+    }
+    renderBranchPassage(startId);
+  }
+
+  function renderBranchPassage(id) {
+    if (id === -4) {
+      seenOutside = true;
+      closeBranch();
+      return;
+    }
+    if (id === "back") {
+      closeBranch();
+      return;
+    }
+
+    if (!passages[id]) return;
+    const p = passages[id];
+    branchText.innerText = p.text;
+    branchChoices.innerHTML = '';
+    backToQuizBtn.style.display = 'none';
+
+    // 呼唤Dreli选项
+    if (id === 15) {
+      addButton(branchChoices, '今天天气真好啊。', 'choice-btn', () => renderBranchPassage(16));
+      addButton(branchChoices, '我不会做题！我不会做题！', 'choice-btn', () => renderBranchPassage(17));
+      if (seenPaper) {
+        addButton(branchChoices, '询问答题纸背面的小字是什么', 'choice-btn', () => renderBranchPassage(21));
+      }
+      backToQuizBtn.style.display = 'inline-block';
+      return;
+    }
+
+    // 呜呜呜路线：设置 dreliGone 为 true，然后返回
+    if (id === 19) {
+      // 用户选择了这个分支，进入 passage 19 并显示文本
+      // 下方按钮“开始答题”设置 dreliGone
+      branchChoices.innerHTML = '';
+      addButton(branchChoices, '开始答题', 'choice-btn', () => {
+        dreliGone = true;
+        closeBranch();
+      });
+      backToQuizBtn.style.display = 'inline-block';
+      return;
+    }
+
+    // 常规渲染
+    if (p.choices) {
+      p.choices.forEach(choice => {
+        addButton(branchChoices, choice.text, 'choice-btn', () => {
+          renderBranchPassage(choice.next);
+        });
+      });
+    }
+    backToQuizBtn.style.display = 'inline-block';
+  }
+
+  function closeBranch() {
+    branchPanel.style.display = 'none';
+    quizMain.style.display = 'block';
+    renderQuestionAndBranches();
+  }
+
+  backToQuizBtn.addEventListener('click', closeBranch);
+
+  btnOutside.addEventListener('click', () => openBranch(13, 'outside'));
+  btnDreli.addEventListener('click', () => openBranch(14, 'dreli'));
+  btnPaper.addEventListener('click', () => openBranch(20, 'paper'));
+
+  // ================== 提交 ==================
+  function generateReport(ans) {
+    const parts = ans.map((a, i) => descMap[i][a]);
+    return `The subject ${parts[0]}, ${parts[1]}, ${parts[2]}, ${parts[3]}, ${parts[4]}, ${parts[5]}, and ${parts[6]}.`;
+  }
+
+  function xorEncrypt(text, key) {
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+      const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+      result += charCode.toString(16).padStart(2, '0');
+    }
+    return result;
+  }
+
+  submitBtn.addEventListener('click', () => {
+    if (answers.includes(null)) return;
+    const report = generateReport(answers);
+    const cipherHex = xorEncrypt(report, _K);
+    quizMain.style.display = 'none';
+    resultMessage.style.display = 'block';
+    resetBtn.style.display = 'inline-block';
+    resultMessage.innerHTML = `
+      <p>你轻松写完了这些题目，把测试结果交给了Dreli。没一会，Dreli递给你一张船票和一张纸条…纸条上的东西你完全看不懂！</p>
+      <div class="note-box">
+        <div class="note-title"> Dreli递来的纸条</div>
+        <div class="cipher-text">${cipherHex}</div>
+      </div>
+      <p>你刚想询问Dreli这是什么，但她叮嘱了一句要把纸条带上海岛后就离去了。你看着纸条，陷入了沉思…</p>
+    `;
+  });
+
+  function resetGame() {
+    fadeTransition(() => {
+      currentPassage = 1;
+      seenOutside = false;
+      seenPaper = false;
+      dreliGone = false;
+      answers.fill(null);
+      currentQuestionIndex = 0;
+      storyContainer.style.display = 'block';
+      quizSection.style.display = 'none';
+      resultMessage.style.display = 'none';
+      resetBtn.style.display = 'none';
+      quizMain.style.display = 'block';
+      branchPanel.style.display = 'none';
+      submitBtn.classList.add('disabled-btn');
+      submitBtn.disabled = true;
+      renderPassage(1);
+    });
+  }
+
+  resetBtn.addEventListener('click', resetGame);
+  renderPassage(1);
+</script>
+</body>
+</html>
